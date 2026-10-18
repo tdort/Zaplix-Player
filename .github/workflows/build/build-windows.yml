@@ -1,0 +1,64 @@
+
+name: R2K16 Windows Client Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Locate solution and build tools
+        shell: pwsh
+        run: |
+          Write-Host "=== MSBuild ==="
+          Get-Command msbuild -ErrorAction SilentlyContinue
+          Write-Host "=== Solutions ==="
+          Get-ChildItem -Path . -Filter *.sln -Recurse |
+            Select-Object -ExpandProperty FullName
+          Write-Host "=== WindowsClient projects ==="
+          Get-ChildItem -Path . -Filter *WindowsClient*.vcxproj -Recurse |
+            Select-Object -ExpandProperty FullName
+          Write-Host "=== Boost build files ==="
+          Test-Path "Library/boost/tools/build/src"
+          Write-Host "=== Qt qmake ==="
+          Get-ChildItem -Path Library/Qt -Filter qmake.exe -Recurse `
+            -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName
+
+      - name: Build solution
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Path . -Filter Roblox.sln -Recurse |
+            Select-Object -First 1
+
+          if (-not $sln) {
+            throw "Roblox.sln was not found."
+          }
+
+          & msbuild $sln.FullName /m `
+            /p:Configuration=Release `
+            /p:Platform=Win32 `
+            /v:minimal `
+            /fl `
+            /flp:logfile=build.log
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Build failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2k16-build-log
+          path: build.log
+          if-no-files-found: ignore
